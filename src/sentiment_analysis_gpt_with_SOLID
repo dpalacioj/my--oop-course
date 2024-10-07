@@ -1,0 +1,83 @@
+import openai
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+api_key_openai = os.getenv("OPENAI_API_KEY")
+
+
+openai.api_key = api_key_openai
+
+# Instrucciones
+system_rol = """Actúa como un experto en analizar sentimientos.
+                El usuario te ingresará diferentes mensajes y vos analizas
+                los sentimientos y darás una respuesta con al menos 1 carácter
+                y máximo 4 caracteres.
+                Es MUY IMPORTANTE que tengas en cuenta que solo quiero respuesta
+                NUMÉRICAS, donde -1 es algo muy negativo, 0 es neutral y 1 es 
+                muy positivo. También puedes responder rangos intermedios como
+                0.7, 0.4, 0.1, etcétera. De acuerdo a lo que te ingrese el usuario.
+                Recuerda que son válidos todos los rangos.
+                (Solo puedes contestar con ints o floats)"""
+
+# Rol que tendrá GPT
+mensajes = [{"role": "system", "content": system_rol}]
+
+# Solo representa un sentimiento y su color
+class Sentimiento:
+    def __init__(self, nombre, color):
+        self.nombre = nombre
+        self.color = color
+
+    def __str__(self):
+        return "\x1b[1;{}m{}\x1b[0;37m".format(self.color,self.nombre)
+
+# Solo mapea polaridades a sentimiento
+class AnalizadorDeSentimientos:
+    def __init__(self, rangos):
+        self.rangos = rangos
+
+    def analizar_sentimiento(self, polaridad):
+        for rango, sentimiento in self.rangos:
+            if rango[0] < polaridad <= rango[1]:
+                return sentimiento
+        return Sentimiento("Muy negativo", "31")
+    
+rangos = [
+    ((-0.6,-0.3), Sentimiento("negativo","31")),
+    ((-0.3,-0.1), Sentimiento("algo negativo","31")),
+    ((-0.1,0.1), Sentimiento("neutral","33")),
+    ((0.1,0.4), Sentimiento("algo positivo","32")),
+    ((0.4,0.9), Sentimiento("positivo","32")),
+    ((0.9,1), Sentimiento("muy positivo","32"))
+]
+
+        
+analizador = AnalizadorDeSentimientos(rangos)
+
+while True:
+    user_prompt = input("\x1b[1;37m" + "Escribe algo para luego yo analizar el texto: " + "\x1b[1;37m")
+    mensajes.append({"role": "user", "content": user_prompt}) # Lista de mensajes para que gpt analice
+
+    try:
+        completion = openai.chat.completions.create(
+            model = "gpt-3.5-turbo",
+            messages = mensajes,
+            max_tokens = 8
+        )
+
+        # Verificar si hay respuesta en la estructura esperada
+        respuesta = completion.choices[0].message.content
+
+        # Convertir la respuesta a floar
+        mensajes.append({"role": "assistant", "content": respuesta})
+
+        # Análisis de sentimiento
+        sentimiento = analizador.analizar_sentimiento(float(respuesta))
+        print(sentimiento)
+
+    except ValueError:
+        print("\x1b[1;31m" + "Error: La respuesta no es un número válido." + "\x1b[1;37m")
+    except Exception as e:
+        print("\x1b[1;31m" + f"Error: {e}" + "\x1b[1;37m")
